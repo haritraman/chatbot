@@ -41,8 +41,16 @@ def get_file(filename):
 
 @socketio.on("message")
 def handle_message(data):
-    print(f"Received message: {data['username']}: {data['message']}")
-    socketio.emit("message", {"username": data["username"], "message": data["message"]}, broadcast=True)
+    if not isinstance(data, dict):
+        print("Invalid message format received:", data)
+        return  # Ignore invalid messages
+
+    username = data.get("username", "Unknown")
+    message = data.get("message", "")
+
+    print(f"Received message: {username}: {message}")
+    socketio.emit("message", {"username": username, "message": message})
+
 
 
 if __name__ == "__main__":

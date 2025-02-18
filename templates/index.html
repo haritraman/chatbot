@@ -69,7 +69,8 @@
                 alert("Please set your username first.");
                 return;
             }
-            socket.emit({ username: username, message: message });
+            socket.emit("message", { username: username, message: message });
+
             document.getElementById("message").value = "";
         }
 
