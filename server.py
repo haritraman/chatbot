@@ -42,7 +42,8 @@ def get_file(filename):
 @socketio.on("message")
 def handle_message(data):
     print(f"Received message: {data['username']}: {data['message']}")
-    socketio.emit("message", f"{data['username']}: {data['message']}", to=None)
+    socketio.emit("message", {"username": data["username"], "message": data["message"]}, broadcast=True)
+
 
 if __name__ == "__main__":
     socketio.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))

@@ -31,7 +31,8 @@
     <ul id="file-list"></ul>
 
     <script>
-        var socket = io("http://localhost:5001");  
+        var socket = io(window.location.origin);
+
         var username = "";
 
         function setUsername() {
@@ -45,11 +46,15 @@
             console.log("Connected to server.");
         });
 
-        socket.on("message", function(msg) {
-            var chatBox = document.getElementById("chat-box");
-            chatBox.innerHTML += "<p>" + msg + "</p>";
-            chatBox.scrollTop = chatBox.scrollHeight;  
+        
+        socket.on("message", function(data) {
+            console.log("Received message:", data); // Debugging
+            let messageBox = document.getElementById("chat-box"); 
+            let newMessage = document.createElement("p");
+            newMessage.textContent = `${data.username}: ${data.message}`;
+            messageBox.appendChild(newMessage);
         });
+
 
         socket.on("file_uploaded", function(filename) {
             var fileList = document.getElementById("file-list");
@@ -64,7 +69,7 @@
                 alert("Please set your username first.");
                 return;
             }
-            socket.send({ username: username, message: message });
+            socket.emit({ username: username, message: message });
             document.getElementById("message").value = "";
         }
 
