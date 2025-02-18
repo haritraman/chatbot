@@ -45,4 +45,5 @@ def handle_message(data):
     socketio.emit("message", f"{data['username']}: {data['message']}", to=None)
 
 if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=5001, debug=True)
+    socketio.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
