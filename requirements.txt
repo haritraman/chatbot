@@ -1,4 +1,5 @@
 flask
 flask-socketio
+google-generativeai
 gunicorn
 eventlet
