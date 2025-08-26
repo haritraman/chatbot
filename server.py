@@ -59,17 +59,32 @@ def handle_message(data):
     socketio.emit("message", {"username": username, "message": message})
 
     # --- AI BOT LOGIC ---
-    if message.startswith("@bot"):
+    if message.lower().startswith("@bot"):
         print("@bot command detected. Processing AI response...")
-        user_query = message.replace("@bot", "").strip()
+
+        # ✅ Safely extract everything after "@bot"
+        user_query = message[len("@bot"):].strip()
         print(f"User query for bot: {user_query}")
+
+        if not user_query:
+            bot_reply = "Please type something after @bot."
+            socketio.emit("message", {"username": BOT_NAME, "message": bot_reply})
+            return
 
         try:
             model = genai.GenerativeModel("models/gemini-2.5-pro")
             print("Gemini model created.")
             response = model.generate_content(user_query)
-            print(f"Gemini API response: {response}")
-            bot_reply = response.text if hasattr(response, 'text') else str(response)
+
+            # ✅ Safely extract text (Gemini sometimes returns candidates/parts)
+            if hasattr(response, "text") and response.text:
+                bot_reply = response.text
+            elif hasattr(response, "candidates") and response.candidates:
+                parts = response.candidates[0].content.parts
+                bot_reply = " ".join(p.text for p in parts if hasattr(p, "text"))
+            else:
+                bot_reply = "⚠️ No valid response from Gemini."
+
         except Exception as e:
             print(f"Error from Gemini API: {e}")
             bot_reply = f"Error: {str(e)}"
