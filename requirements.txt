@@ -1,5 +1,7 @@
-flask
-flask-socketio
-google-generativeai
+Flask
+Flask-SocketIO
+eventlet==0.33.3
 gunicorn
-eventlet
+requests
+google-generativeai
+python-dotenv
