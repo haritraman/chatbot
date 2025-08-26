@@ -68,6 +68,12 @@
       font-weight: 500;
       border-left: 4px solid #34b7f1;
     }
+    #typing {
+      font-style: italic;
+      color: #888;
+      padding-left: 10px;
+      padding-bottom: 5px;
+    }
     #input-container {
       display: flex;
       gap: 6px;
@@ -143,6 +149,7 @@
   <div id="chat-container">
     <div class="wa-header">Chat Buddy</div>
     <div id="messages"></div>
+    <div id="typing"></div>
     <div id="input-container">
       <input id="username" type="text" placeholder="Name">
       <input id="message" type="text" placeholder="Type a message...">
@@ -157,32 +164,51 @@
 
   <script>
     const socket = io();
-
     const messagesDiv = document.getElementById("messages");
     const usernameInput = document.getElementById("username");
     const messageInput = document.getElementById("message");
+    const typingDiv = document.getElementById("typing");
 
-    // Receive chat messages
-    socket.on("message", (data) => {
+    // Add a message to chat
+    function addMessage(username, message, type="user") {
       const div = document.createElement("div");
       let bubble = document.createElement("span");
-      let isBot = data.username === "AI Bot";
-      let isMe = data.username === usernameInput.value;
       bubble.classList.add("bubble");
-      if (isBot) {
-        bubble.classList.add("bot", "received");
-      } else if (isMe) {
-        bubble.classList.add("sent");
+      // Bot messages on right, user messages on left
+      if (username === "AI Bot") {
+        bubble.classList.add("bot", "sent"); // right side for bot
       } else {
-        bubble.classList.add("received");
+        bubble.classList.add("received"); // left side for users
       }
-      bubble.innerHTML = `<strong>${data.username}:</strong> ${data.message}`;
+      if(type === "file") {
+        bubble.innerHTML = `<strong>${username}:</strong> <a href='/files/${message}' class='file-link' target='_blank'>${message}</a>`;
+      } else {
+        bubble.innerHTML = `<strong>${username}:</strong> ${message}`;
+      }
       div.appendChild(bubble);
       messagesDiv.appendChild(div);
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    // Load history from server
+    fetch("/history")
+      .then(res => res.json())
+      .then(data => {
+        data.forEach(msg => addMessage(msg.username, msg.message, msg.type));
+      });
+
+    // Typing indicator
+    socket.on("typing", (data) => {
+      typingDiv.textContent = "AI is typing...";
+      setTimeout(()=>{ typingDiv.textContent = ""; }, 1500); // remove after 1.5s
     });
 
-    // Receive file notifications
+    // Receive chat messages
+    socket.on("message", (data) => {
+      addMessage(data.username, data.message, data.type);
+    });
+
+    // Receive file notifications (already handled in message with type="file")
     socket.on("file_uploaded", (filename) => {
       const filesDiv = document.getElementById("uploaded-files");
       const link = document.createElement("a");
@@ -191,38 +217,33 @@
       link.target = "_blank";
       link.className = "file-link";
       filesDiv.appendChild(link);
-
-      // Also notify in chat
-      const div = document.createElement("div");
-      let bubble = document.createElement("span");
-      bubble.classList.add("bubble", "received");
-      bubble.innerHTML = `📂 <strong>File uploaded:</strong> <a href='/files/${filename}' class='file-link' target='_blank'>${filename}</a>`;
-      div.appendChild(bubble);
-      messagesDiv.appendChild(div);
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
     });
 
     // Send message
     function sendMessage() {
       const username = usernameInput.value || "Anonymous";
       const message = messageInput.value;
-      if (message.trim() === "") return;
-      socket.emit("message", { username, message });
+      if(!message.trim()) return;
+      socket.emit("message", {username, message});
       messageInput.value = "";
     }
 
     // File upload
     document.getElementById("uploadForm").addEventListener("submit", async (e) => {
       e.preventDefault();
+      const file = document.getElementById("fileInput").files[0];
+      if(!file) return;
       const formData = new FormData();
-      formData.append("file", document.getElementById("fileInput").files[0]);
+      formData.append("file", file);
 
-      const response = await fetch("/upload", { method: "POST", body: formData });
-      if (response.ok) {
-        alert("File uploaded!");
-      } else {
-        alert("Upload failed!");
-      }
+      const response = await fetch("/upload", {method: "POST", body: formData});
+      if(response.ok) alert("File uploaded!");
+      else alert("Upload failed!");
+    });
+
+    // Send message on Enter key
+    messageInput.addEventListener("keydown", (e)=>{
+      if(e.key === "Enter") sendMessage();
     });
   </script>
 </body>

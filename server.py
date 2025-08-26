@@ -3,13 +3,16 @@ load_dotenv()
 import os
 import eventlet
 eventlet.monkey_patch()
-from flask import Flask, render_template, request, send_from_directory
-from flask_socketio import SocketIO, send
+from flask import Flask, render_template, request, send_from_directory, jsonify
+from flask_socketio import SocketIO
 from werkzeug.utils import secure_filename
 import google.generativeai as genai
+import json
+import time
 
 UPLOAD_FOLDER = "uploads"
 BOT_NAME = "AI Bot"
+CHAT_HISTORY_FILE = "chat_history.json"
 
 app = Flask(__name__)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
@@ -22,6 +25,23 @@ genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
+# ---------------- Chat History Helpers ----------------
+def load_chat_history():
+    if os.path.exists(CHAT_HISTORY_FILE):
+        with open(CHAT_HISTORY_FILE, "r", encoding="utf-8") as f:
+            try:
+                return json.load(f)
+            except:
+                return []
+    return []
+
+def save_chat_history(chat_history):
+    with open(CHAT_HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(chat_history, f, ensure_ascii=False, indent=2)
+
+chat_history = load_chat_history()
+
+# ---------------- Routes ----------------
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -39,44 +59,53 @@ def upload_file():
     file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     file.save(file_path)
 
-    socketio.emit("file_uploaded", filename)  # Notify clients about the uploaded file
+    # Save file upload in chat history
+    chat_history.append({"username": "You", "message": filename, "type": "file"})
+    save_chat_history(chat_history)
+
+    socketio.emit("message", {"username": "You", "message": filename, "type": "file"})
     return "File uploaded successfully", 200
 
 @app.route("/files/<filename>")
 def get_file(filename):
     return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
+@app.route("/history")
+def get_history():
+    return jsonify(chat_history)
+
+# ---------------- SocketIO ----------------
 @socketio.on("message")
 def handle_message(data):
     if not isinstance(data, dict):
         print("Invalid message format received:", data)
-        return  # Ignore invalid messages
+        return
 
     username = data.get("username", "Unknown")
     message = data.get("message", "")
 
-    print(f"Received message: {username}: {message}")
-    socketio.emit("message", {"username": username, "message": message})
+    # Save user message
+    chat_history.append({"username": username, "message": message, "type": "user"})
+    save_chat_history(chat_history)
+    socketio.emit("message", {"username": username, "message": message, "type": "user"})
 
-    # --- AI BOT LOGIC ---
+    # AI Bot logic
     if message.lower().startswith("@bot"):
-        print("@bot command detected. Processing AI response...")
-
-        # ✅ Safely extract everything after "@bot"
         user_query = message[len("@bot"):].strip()
-        print(f"User query for bot: {user_query}")
-
         if not user_query:
             bot_reply = "Please type something after @bot."
-            socketio.emit("message", {"username": BOT_NAME, "message": bot_reply})
+            chat_history.append({"username": BOT_NAME, "message": bot_reply, "type": "bot"})
+            save_chat_history(chat_history)
+            socketio.emit("message", {"username": BOT_NAME, "message": bot_reply, "type": "bot"})
             return
+
+        # Emit typing indicator
+        socketio.emit("typing", {"username": BOT_NAME})
 
         try:
             model = genai.GenerativeModel("models/gemini-2.5-pro")
-            print("Gemini model created.")
             response = model.generate_content(user_query)
 
-            # ✅ Safely extract text (Gemini sometimes returns candidates/parts)
             if hasattr(response, "text") and response.text:
                 bot_reply = response.text
             elif hasattr(response, "candidates") and response.candidates:
@@ -86,13 +115,17 @@ def handle_message(data):
                 bot_reply = "⚠️ No valid response from Gemini."
 
         except Exception as e:
-            print(f"Error from Gemini API: {e}")
             bot_reply = f"Error: {str(e)}"
 
-        # Emit bot response back into chat
-        print(f"Bot reply: {bot_reply}")
-        socketio.emit("message", {"username": BOT_NAME, "message": bot_reply})
+        # Small delay to show typing indicator
+        time.sleep(1)
 
+        # Save bot reply
+        chat_history.append({"username": BOT_NAME, "message": bot_reply, "type": "bot"})
+        save_chat_history(chat_history)
 
+        socketio.emit("message", {"username": BOT_NAME, "message": bot_reply, "type": "bot"})
+
+# ---------------- Main ----------------
 if __name__ == "__main__":
     socketio.run(app, host="127.0.0.1", port=5001)
