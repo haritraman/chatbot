@@ -1,102 +1,229 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web Chat</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; }
-        #chat-box { width: 80%; height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; margin: auto; text-align: left; }
-        input { width: 70%; padding: 8px; }
-        button { padding: 8px; }
-    </style>
+  <meta charset="UTF-8">
+  <title>WhatsApp Style Chat</title>
+  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #ece5dd;
+      margin: 0;
+      padding: 0;
+    }
+    #chat-container {
+      width: 420px;
+      margin: 40px auto;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      overflow: hidden;
+      border: 1px solid #bdbdbd;
+    }
+    .wa-header {
+      background: #075e54;
+      color: #fff;
+      padding: 18px 20px;
+      font-size: 1.3em;
+      font-weight: 500;
+      letter-spacing: 1px;
+      text-align: left;
+    }
+    #messages {
+      height: 350px;
+      overflow-y: auto;
+      padding: 18px 10px 10px 10px;
+      background: #ece5dd;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .bubble {
+      max-width: 70%;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 1em;
+      margin-bottom: 2px;
+      word-break: break-word;
+      display: inline-block;
+      position: relative;
+      box-shadow: 0 1px 1px rgba(0,0,0,0.04);
+    }
+    .sent {
+      align-self: flex-end;
+      background: #dcf8c6;
+      color: #222;
+      border-bottom-right-radius: 2px;
+    }
+    .received {
+      align-self: flex-start;
+      background: #fff;
+      color: #222;
+      border-bottom-left-radius: 2px;
+      border: 1px solid #e0e0e0;
+    }
+    .bot {
+      background: #e7f3fe;
+      color: #075e54;
+      font-weight: 500;
+      border-left: 4px solid #34b7f1;
+    }
+    #input-container {
+      display: flex;
+      gap: 6px;
+      padding: 12px 10px 12px 10px;
+      background: #f7f7f7;
+      border-top: 1px solid #e0e0e0;
+    }
+    #username {
+      width: 80px;
+      border-radius: 5px;
+      border: 1px solid #bdbdbd;
+      padding: 7px;
+    }
+    #message {
+      flex: 1;
+      border-radius: 5px;
+      border: 1px solid #bdbdbd;
+      padding: 7px;
+    }
+    #input-container button {
+      background: #25d366;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      padding: 7px 16px;
+      font-size: 1em;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #input-container button:hover {
+      background: #128c7e;
+    }
+    #uploadForm {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 10px 0 0 0;
+      padding: 0 10px 10px 10px;
+      border-top: 1px solid #e0e0e0;
+      background: #f7f7f7;
+    }
+    #fileInput {
+      flex: 1;
+    }
+    #uploadForm button {
+      background: #34b7f1;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      padding: 7px 14px;
+      font-size: 1em;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #uploadForm button:hover {
+      background: #075e54;
+    }
+    #uploaded-files {
+      padding: 0 10px 10px 10px;
+      font-size: 0.97em;
+    }
+    .file-link {
+      color: #075e54;
+      text-decoration: none;
+      margin-right: 8px;
+    }
+    .file-link:hover {
+      text-decoration: underline;
+    }
+  </style>
 </head>
 <body>
-    <h2>Web Chat</h2>
-    <input type="text" id="username" placeholder="Enter your name" required>
-    <button onclick="setUsername()">Set Name</button>
-    <br><br>
-    
-    <div id="chat-box"></div>
-    
-    <input type="text" id="message" placeholder="Type a message...">
-    <button onclick="sendMessage()">Send</button>
+  <div id="chat-container">
+    <div class="wa-header">Chat Buddy</div>
+    <div id="messages"></div>
+    <div id="input-container">
+      <input id="username" type="text" placeholder="Name">
+      <input id="message" type="text" placeholder="Type a message...">
+      <button onclick="sendMessage()">Send</button>
+    </div>
+    <form id="uploadForm" enctype="multipart/form-data">
+      <input type="file" id="fileInput" name="file">
+      <button type="submit">Upload File</button>
+    </form>
+    <div id="uploaded-files"></div>
+  </div>
 
-    <h3>Upload File</h3>
-    <input type="file" id="fileInput">
-    <button onclick="uploadFile()">Upload</button>
+  <script>
+    const socket = io();
 
-    <h3>Available Files</h3>
-    <ul id="file-list"></ul>
+    const messagesDiv = document.getElementById("messages");
+    const usernameInput = document.getElementById("username");
+    const messageInput = document.getElementById("message");
 
-    <script>
-        var socket = io(window.location.origin);
+    // Receive chat messages
+    socket.on("message", (data) => {
+      const div = document.createElement("div");
+      let bubble = document.createElement("span");
+      let isBot = data.username === "AI Bot";
+      let isMe = data.username === usernameInput.value;
+      bubble.classList.add("bubble");
+      if (isBot) {
+        bubble.classList.add("bot", "received");
+      } else if (isMe) {
+        bubble.classList.add("sent");
+      } else {
+        bubble.classList.add("received");
+      }
+      bubble.innerHTML = `<strong>${data.username}:</strong> ${data.message}`;
+      div.appendChild(bubble);
+      messagesDiv.appendChild(div);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    });
 
-        var username = "";
+    // Receive file notifications
+    socket.on("file_uploaded", (filename) => {
+      const filesDiv = document.getElementById("uploaded-files");
+      const link = document.createElement("a");
+      link.href = `/files/${filename}`;
+      link.textContent = filename;
+      link.target = "_blank";
+      link.className = "file-link";
+      filesDiv.appendChild(link);
 
-        function setUsername() {
-            username = document.getElementById("username").value;
-            if (username.trim() === "") {
-                alert("Please enter a valid username.");
-            }
-        }
+      // Also notify in chat
+      const div = document.createElement("div");
+      let bubble = document.createElement("span");
+      bubble.classList.add("bubble", "received");
+      bubble.innerHTML = `📂 <strong>File uploaded:</strong> <a href='/files/${filename}' class='file-link' target='_blank'>${filename}</a>`;
+      div.appendChild(bubble);
+      messagesDiv.appendChild(div);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    });
 
-        socket.on("connect", function() {
-            console.log("Connected to server.");
-        });
+    // Send message
+    function sendMessage() {
+      const username = usernameInput.value || "Anonymous";
+      const message = messageInput.value;
+      if (message.trim() === "") return;
+      socket.emit("message", { username, message });
+      messageInput.value = "";
+    }
 
-        
-        socket.on("message", function(data) {
-            console.log("Received message:", data); // Debugging
-            let messageBox = document.getElementById("chat-box"); 
-            let newMessage = document.createElement("p");
-            newMessage.textContent = `${data.username}: ${data.message}`;
-            messageBox.appendChild(newMessage);
-        });
+    // File upload
+    document.getElementById("uploadForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const formData = new FormData();
+      formData.append("file", document.getElementById("fileInput").files[0]);
 
-
-        socket.on("file_uploaded", function(filename) {
-            var fileList = document.getElementById("file-list");
-            var fileItem = document.createElement("li");
-            fileItem.innerHTML = `<a href="/files/${filename}" target="_blank">${filename}</a>`;
-            fileList.appendChild(fileItem);
-        });
-
-        function sendMessage() {
-            var message = document.getElementById("message").value;
-            if (username.trim() === "") {
-                alert("Please set your username first.");
-                return;
-            }
-            socket.emit("message", { username: username, message: message });
-
-            document.getElementById("message").value = "";
-        }
-
-        function uploadFile() {
-            var fileInput = document.getElementById("fileInput");
-            var file = fileInput.files[0];
-
-            if (!file) {
-                alert("Please select a file to upload.");
-                return;
-            }
-
-            var formData = new FormData();
-            formData.append("file", file);
-
-            fetch("/upload", {
-                method: "POST",
-                body: formData
-            }).then(response => response.text())
-            .then(data => {
-                alert(data);
-                fileInput.value = "";  
-            }).catch(error => {
-                console.error("Error:", error);
-            });
-        }
-    </script>
+      const response = await fetch("/upload", { method: "POST", body: formData });
+      if (response.ok) {
+        alert("File uploaded!");
+      } else {
+        alert("Upload failed!");
+      }
+    });
+  </script>
 </body>
 </html>

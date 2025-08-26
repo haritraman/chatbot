@@ -1,15 +1,22 @@
+from dotenv import load_dotenv
+load_dotenv()
 import os
 import eventlet
 eventlet.monkey_patch()
 from flask import Flask, render_template, request, send_from_directory
 from flask_socketio import SocketIO, send
 from werkzeug.utils import secure_filename
+import google.generativeai as genai
 
 UPLOAD_FOLDER = "uploads"
+BOT_NAME = "AI Bot"
 
 app = Flask(__name__)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+# Configure Gemini API
+genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
 
 # Ensure upload directory exists
 if not os.path.exists(UPLOAD_FOLDER):
@@ -51,9 +58,26 @@ def handle_message(data):
     print(f"Received message: {username}: {message}")
     socketio.emit("message", {"username": username, "message": message})
 
+    # --- AI BOT LOGIC ---
+    if message.startswith("@bot"):
+        print("@bot command detected. Processing AI response...")
+        user_query = message.replace("@bot", "").strip()
+        print(f"User query for bot: {user_query}")
+
+        try:
+            model = genai.GenerativeModel("models/gemini-2.5-pro")
+            print("Gemini model created.")
+            response = model.generate_content(user_query)
+            print(f"Gemini API response: {response}")
+            bot_reply = response.text if hasattr(response, 'text') else str(response)
+        except Exception as e:
+            print(f"Error from Gemini API: {e}")
+            bot_reply = f"Error: {str(e)}"
+
+        # Emit bot response back into chat
+        print(f"Bot reply: {bot_reply}")
+        socketio.emit("message", {"username": BOT_NAME, "message": bot_reply})
+
 
 if __name__ == "__main__":
-    from eventlet import wsgi
-    wsgi.server(eventlet.listen(("0.0.0.0", int(os.environ.get("PORT", 5000)))), app)
-
-
+    socketio.run(app, host="127.0.0.1", port=5001)
