@@ -103,7 +103,7 @@ def handle_message(data):
         socketio.emit("typing", {"username": BOT_NAME})
 
         try:
-            model = genai.GenerativeModel("models/gemini-2.5-pro")
+            model = genai.GenerativeModel("models/gemini-1.5-flash")
             response = model.generate_content(user_query)
 
             if hasattr(response, "text") and response.text:
